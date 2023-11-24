@@ -1,6 +1,7 @@
 import logging
-from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext
-from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, filters, CallbackContext, Application
+from telegram import Update, ReplyKeyboardMarkup
+from moviepy.editor import VideoFileClip
 
 # Set up logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -10,11 +11,48 @@ logger = logging.getLogger(__name__)
 TOKEN = "6914746363:AAG6TMIrudObbkkcv-dTQ_xmy4jI7G3xFIY"
 
 # Function to handle the /start command
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text('Hello! Send me a video link, and I will provide its duration.')
+async def start(update: Update, context: CallbackContext) -> None:
+    await update.message.reply_text('Hello! Send me a video link, and I will provide its duration.')
 
 # Function to handle incoming messages with video links
-def handle_video_link(update: Update, context: CallbackContext) -> None:
+def get_video_duration(video_link: str) -> int:
+    try:
+        # Download the video file
+        clip = VideoFileClip(video_link)
+        # Get the duration in seconds
+        duration = int(clip.duration)
+        return duration
+    except Exception as e:
+        print(f"Error getting video duration: {e}")
+        return 0  # Return 0 seconds in case of an error
+
+def handle_command_choice(update: Update, context: CallbackContext) -> None:
+    # Get the chosen command from the user
+    chosen_command = update.message.text
+
+    # Implement different actions based on the chosen command
+    if chosen_command == "Get Duration":
+        # Get video duration
+        video_link = context.user_data.get("video_link")
+        if video_link:
+            duration = get_video_duration(video_link)
+            update.message.reply_text(f"The duration of the video is {duration} seconds.")
+        else:
+            update.message.reply_text("Please provide a valid video link.")
+    elif chosen_command == "Trim Video":
+        # Implement video trimming logic (replace with your actual implementation)
+        update.message.reply_text("You chose to trim the video. Implement your logic here.")
+    # Add more conditions for other commands as needed
+
+    # End the conversation or continue with other actions as needed
+    context.user_data.pop("video_link", None)
+
+def extract_video_link(message_text: str) -> str:
+    # Replace this with your actual logic to extract the video link
+    # For simplicity, this example assumes that the video link is the entire message text
+    return message_text.strip()
+
+async def handle_video_link(update: Update, context: CallbackContext) -> None:
     # Get the message text
     message_text = update.message.text
 
@@ -22,33 +60,35 @@ def handle_video_link(update: Update, context: CallbackContext) -> None:
     video_link = extract_video_link(message_text)
 
     if video_link:
-        # Get video duration using MoviePy
-        duration = get_video_duration(video_link)
+        # Save the video link to user_data for later use
+        context.user_data["video_link"] = video_link
 
-        # Reply with the video duration
-        update.message.reply_text(f"The duration of the video is {duration} seconds.")
+        # Send command menu
+        commands = ["Get Duration", "Trim Video", "Another Command"]  # Add your actual commands here
+        reply_markup = ReplyKeyboardMarkup([[command] for command in commands], one_time_keyboard=True)
+        await update.message.reply_text("What would you like to do with the video?", reply_markup=reply_markup)
     else:
-        update.message.reply_text("Please provide a valid video link.")
-
-# Rest of your code...
+        await update.message.reply_text("Please provide a valid video link.")
 
 # Main function to start the bot
 def main() -> None:
-    updater = Updater(TOKEN, update_queue=True)
-
-    dp = updater.dispatcher
+    application = Application.builder().token(TOKEN).build()
 
     # Add command handler for /start
-    dp.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("start", start))
 
     # Add message handler for video links
-    dp.add_handler(MessageHandler(filters.text & ~filters.command, handle_video_link))
+    filtersUsed = filters.TEXT & (~filters.COMMAND)
+    application.add_handler(MessageHandler(filtersUsed, handle_video_link))
+
+    # Add message handler for command choices
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_command_choice))
 
     # Start the Bot
-    updater.start_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
     # Run the bot until you send a signal to stop
-    updater.idle()
+    application.idle()
 
 if __name__ == '__main__':
     main()
